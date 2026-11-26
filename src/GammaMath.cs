@@ -1,13 +1,13 @@
-using System;
+﻿using System;
 
 namespace GammaPanelX
 {
     /// <summary>
-    /// 由 亮度/对比度/伽马 三个参数生成 256 级 Gamma LUT。
+    /// 由 Brillo/Contraste/Gamma 三个参数生成 256 级 Gamma LUT。
     /// 公式与原版 Gamma Panel 同族：
-    ///   v = (i/255)^(1/gamma)            伽马校正
-    ///   v = (v-0.5)*((contrast+100)/100)+0.5   以中灰为轴缩放对比度
-    ///   v = v + brightness/100*0.5       整体平移亮度
+    ///   v = (i/255)^(1/gamma)            Gamma校正
+    ///   v = (v-0.5)*((contrast+100)/100)+0.5   以中灰为轴缩放Contraste
+    ///   v = v + brightness/100*0.5       整体平移Brillo
     /// </summary>
     public static class GammaMath
     {

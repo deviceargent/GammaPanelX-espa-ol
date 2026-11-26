@@ -1,14 +1,14 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 
 namespace GammaPanelX
 {
-    /// <summary>一台已连接显示器的运行时信息。</summary>
+    /// <summary>一台已连接Monitor的运行时信息。</summary>
     public class DisplayMonitor
     {
         public string DeviceName { get; set; }     // \\.\DISPLAY1
-        public string FriendlyName { get; set; }   // 显示器型号字符串
+        public string FriendlyName { get; set; }   // Monitor型号字符串
         public string StableKey { get; set; }      // 基于硬件 DeviceID 的稳定标识（用于保存配置）
         public Rectangle Bounds { get; set; }
         public bool IsPrimary { get; set; }
@@ -25,7 +25,7 @@ namespace GammaPanelX
         {
             string n = DeviceName.Replace("\\\\.\\", "");
             string s = n + "  " + FriendlyName;
-            if (IsPrimary) s += " (主屏)";
+            if (IsPrimary) s += " (principal)";
             return s;
         }
     }
@@ -39,7 +39,7 @@ namespace GammaPanelX
 
     public static class MonitorService
     {
-        /// <summary>枚举当前所有激活的显示器。</summary>
+        /// <summary>枚举当前所有激活的Monitor。</summary>
         public static List<DisplayMonitor> Enumerate()
         {
             List<DisplayMonitor> result = new List<DisplayMonitor>();
@@ -73,7 +73,7 @@ namespace GammaPanelX
                         m.StableKey = mon.DeviceID;
                 }
                 if (string.IsNullOrEmpty(m.FriendlyName))
-                    m.FriendlyName = "通用显示器";
+                    m.FriendlyName = "Monitor genérico";
 
                 result.Add(m);
             }
@@ -110,8 +110,8 @@ namespace GammaPanelX
 
         // ---------- 软件 Gamma ----------
 
-        /// <summary>把配置生成的 LUT 写入指定显示器。返回 false 表示被系统拒绝（超出允许范围）。
-        /// baseline 为该显示器的基线 LUT（如系统 ICC 校准），调节在其上合成；可为 null。</summary>
+        /// <summary>把配置生成的 LUT 写入指定Monitor。返回 false 表示被系统拒绝（超出允许范围）。
+        /// baseline 为该Monitor的基线 LUT（如系统 ICC 校准），调节在其上合成；可为 null。</summary>
         public static bool ApplyGamma(string deviceName, MonitorConfig cfg, ushort[] baseline)
         {
             ushort[] ramp = GammaMath.BuildRamp(cfg, baseline);
@@ -128,7 +128,7 @@ namespace GammaPanelX
             }
         }
 
-        /// <summary>读取显示器当前生效的 LUT（用于捕获 ICC 校准基线）。失败返回 null。</summary>
+        /// <summary>读取Monitor当前生效的 LUT（用于捕获 ICC 校准基线）。失败返回 null。</summary>
         public static ushort[] GetGammaRamp(string deviceName)
         {
             IntPtr dc = OpenDc(deviceName);
@@ -157,7 +157,7 @@ namespace GammaPanelX
 
         private static readonly object DdcLock = new object();
 
-        /// <summary>获取物理显示器句柄并探测支持的 VCP 功能。慢操作，应在后台线程调用。</summary>
+        /// <summary>获取物理Monitor句柄并探测支持的 VCP 功能。慢操作，应在后台线程调用。</summary>
         public static void ProbeDdc(DisplayMonitor m)
         {
             lock (DdcLock)
@@ -179,7 +179,7 @@ namespace GammaPanelX
                 if (!NativeMethods.GetPhysicalMonitorsFromHMONITOR(m.HMonitor, count, phys))
                     return;
 
-                // 一个 HMONITOR 正常只对应一个物理显示器，取第一个，其余立即释放
+                // 一个 HMONITOR 正常只对应一个物理Monitor，取第一个，其余立即释放
                 m.PhysicalHandle = phys[0].hPhysicalMonitor;
                 if (count > 1)
                 {

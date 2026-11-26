@@ -6,7 +6,7 @@ A modern remake of the classic [Gamma Panel](https://gammapanel.en.softonic.com/
 
 Portable single-file app — no installer, no .NET SDK or runtime downloads (uses the .NET Framework 4.x that ships with Windows).
 
-> Note: the UI is currently in Simplified Chinese.
+> Nota: la interfaz de usuario está en Español.
 
 ## Download
 

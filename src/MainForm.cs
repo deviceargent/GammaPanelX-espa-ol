@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -54,12 +54,18 @@ namespace GammaPanelX
         private NotifyIcon trayIcon;
         private ContextMenuStrip trayMenu;
 
-        private System.Windows.Forms.Timer _saveTimer;          // 设置延迟保存
-        private System.Windows.Forms.Timer _keepTimer;          // 定时重新应用
-        private System.Windows.Forms.Timer _ddcSetTimer;        // DDC 写入去抖
-        private System.Windows.Forms.Timer _displayChangeTimer; // 显示器变更去抖
+        // ---------- Tema ----------
+        private enum AppTheme { System, Dark, Light }
+        private AppTheme _currentTheme = AppTheme.System;
+        private const string RegThemeKey = @"Software\GammaPanelX";
+        private Button btnTheme;
 
-        // 待发送的 DDC 写入及其目标显示器 (滑块拖动时捕获, 避免去抖期间切换选中项导致写错屏)
+        private System.Windows.Forms.Timer _saveTimer;          // 设置延迟保存
+        private System.Windows.Forms.Timer _keepTimer;          // 定时重新Aplicar
+        private System.Windows.Forms.Timer _ddcSetTimer;        // DDC 写入去抖
+        private System.Windows.Forms.Timer _displayChangeTimer; // Monitor变更去抖
+
+        // 待发送的 DDC 写入及其目标Monitor (滑块拖动时捕获, 避免去抖期间切换选中项导致写错屏)
         private readonly Dictionary<byte, uint> _pendingDdcWrites = new Dictionary<byte, uint>();
         private readonly List<DisplayMonitor> _pendingDdcTargets = new List<DisplayMonitor>();
 
@@ -82,9 +88,12 @@ namespace GammaPanelX
 
             SystemEvents.PowerModeChanged += OnPowerModeChanged;
             SystemEvents.SessionSwitch += OnSessionSwitch;
+            SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
             Load += delegate
             {
+                LoadThemeSetting();
+                ApplyTheme();
                 _loadingUi = true;
                 chkKeepApplied.Checked = _settings.KeepApplied;
                 chkTrayOnClose.Checked = _settings.TrayOnClose;
@@ -100,7 +109,7 @@ namespace GammaPanelX
                 if (_settings.ApplyOnStartup)
                 {
                     int n = ReapplyNonNeutral();
-                    if (n > 0) SetStatus(string.Format("已恢复 {0} 台显示器的上次设置", n));
+                    if (n > 0) SetStatus(string.Format("Restauradas las últimas opciones de {0} monitor(es)", n));
                 }
             };
         }
@@ -119,8 +128,8 @@ namespace GammaPanelX
 
         private void BuildUi()
         {
-            Text = "GammaPanel X — 多显示器独立调节";
-            Font = new Font("Microsoft YaHei UI", 9f);
+            Text = "GammaPanel X — Ajuste independiente por monitor";
+            Font = new Font("Segoe UI", 9f);
             AutoScaleMode = AutoScaleMode.Font;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
@@ -128,8 +137,8 @@ namespace GammaPanelX
             StartPosition = FormStartPosition.CenterScreen;
             Icon = CreateAppIcon();
 
-            // ---------- 左列：显示器列表与选项 ----------
-            Label lblMon = NewLabel("显示器", 12, 12);
+            // ---------- 左列：Monitor列表与选项 ----------
+            Label lblMon = NewLabel("Monitor", 12, 12);
             Controls.Add(lblMon);
 
             lstMonitors = new ListBox();
@@ -138,15 +147,15 @@ namespace GammaPanelX
             lstMonitors.SelectedIndexChanged += delegate { LoadMonitorToUi(); };
             Controls.Add(lstMonitors);
 
-            btnIdentify = NewButton("识别显示器", 12, 332, 122, 28, delegate { IdentifyForm.ShowAll(_monitors); });
-            btnRefresh = NewButton("刷新列表", 142, 332, 122, 28, delegate { RefreshMonitors(true); });
+            btnIdentify = NewButton("Identificar monitores", 12, 332, 122, 28, delegate { IdentifyForm.ShowAll(_monitors); });
+            btnRefresh = NewButton("Actualizar lista", 142, 332, 122, 28, delegate { RefreshMonitors(true); });
             Controls.Add(btnIdentify);
             Controls.Add(btnRefresh);
 
-            chkApplyAll = NewCheck("同步调节所有显示器", 12, 372);
-            chkKeepApplied = NewCheck("定时重新应用 (每5秒, 防游戏重置)", 12, 398);
-            chkTrayOnClose = NewCheck("点击关闭按钮时最小化到托盘", 12, 424);
-            chkAutoStart = NewCheck("开机自动启动", 12, 450);
+            chkApplyAll = NewCheck("Sincronizar todos los monitores", 12, 372);
+            chkKeepApplied = NewCheck("Reaplicar cada 5 s (evita reset por juegos)", 12, 398);
+            chkTrayOnClose = NewCheck("Minimizar a la bandeja al cerrar", 12, 424);
+            chkAutoStart = NewCheck("Iniciar con Windows", 12, 450);
             chkKeepApplied.CheckedChanged += delegate
             {
                 if (_loadingUi) return;
@@ -172,14 +181,14 @@ namespace GammaPanelX
 
             // ---------- 右上：软件 Gamma ----------
             grpGamma = new GroupBox();
-            grpGamma.Text = "软件调节 (Gamma 查找表) — 对该显示器单独生效";
+            grpGamma.Text = "Ajuste por software (tabla gamma) — afecta solo a este monitor";
             grpGamma.SetBounds(276, 8, 610, 320);
             Controls.Add(grpGamma);
 
-            rdoAll = NewRadio("RGB 联动", 14, 26, true);
-            rdoR = NewRadio("红", 110, 26, false);
-            rdoG = NewRadio("绿", 165, 26, false);
-            rdoB = NewRadio("蓝", 220, 26, false);
+            rdoAll = NewRadio("R+G+B", 14, 26, true);
+            rdoR = NewRadio("Rojo", 110, 26, false);
+            rdoG = NewRadio("Verde", 165, 26, false);
+            rdoB = NewRadio("Azul", 220, 26, false);
             rdoR.ForeColor = Color.Firebrick;
             rdoG.ForeColor = Color.ForestGreen;
             rdoB.ForeColor = Color.RoyalBlue;
@@ -200,11 +209,11 @@ namespace GammaPanelX
 
             tbBright = NewTrack(-100, 100, 25, 70, 56, 240);
             numBright = NewNum(-100, 100, 0, 318, 60);
-            AddRow(grpGamma, "亮度", 56, tbBright, numBright);
+            AddRow(grpGamma, "Brillo", 56, tbBright, numBright);
 
             tbContrast = NewTrack(-100, 100, 25, 70, 104, 240);
             numContrast = NewNum(-100, 100, 0, 318, 108);
-            AddRow(grpGamma, "对比度", 104, tbContrast, numContrast);
+            AddRow(grpGamma, "Contraste", 104, tbContrast, numContrast);
 
             tbGamma = NewTrack(30, 300, 30, 70, 152, 240);
             tbGamma.Value = 100;
@@ -215,15 +224,15 @@ namespace GammaPanelX
             numGamma.DecimalPlaces = 2;
             numGamma.Increment = 0.05m;
             numGamma.Value = 1.00m;
-            AddRow(grpGamma, "伽马", 152, tbGamma, numGamma);
+            AddRow(grpGamma, "Gamma", 152, tbGamma, numGamma);
 
             // 滑块 <-> 数字框 双向同步，并提交修改
             WireSlider(tbBright, numBright, 1);
             WireSlider(tbContrast, numContrast, 1);
             WireSlider(tbGamma, numGamma, 100);
 
-            btnResetMonitor = NewButton("重置此显示器", 70, 206, 120, 28, delegate { ResetMonitor(); });
-            btnResetAll = NewButton("重置所有显示器", 200, 206, 120, 28, delegate { ResetAllMonitors(); });
+            btnResetMonitor = NewButton("Restablecer este monitor", 70, 206, 120, 28, delegate { ResetMonitor(); });
+            btnResetAll = NewButton("Restablecer todos los monitores", 200, 206, 120, 28, delegate { ResetAllMonitors(); });
             grpGamma.Controls.Add(btnResetMonitor);
             grpGamma.Controls.Add(btnResetAll);
 
@@ -241,38 +250,38 @@ namespace GammaPanelX
             grpGamma.Controls.Add(lblGammaStatus);
 
             lnkUnlock = new LinkLabel();
-            lnkUnlock.Text = "极端数值被系统拒绝？点此解除 Windows Gamma 范围限制 (需管理员, 注销后生效)";
+            lnkUnlock.Text = "¿Valores extremos rechazados por el sistema? Clic para quitar el límite de rango gamma de Windows (requiere admin, efectivo tras cerrar sesión)";
             lnkUnlock.SetBounds(14, 274, 580, 20);
             lnkUnlock.LinkClicked += delegate { UnlockGammaRange(); };
             grpGamma.Controls.Add(lnkUnlock);
 
             // ---------- 右中：DDC/CI ----------
             grpDdc = new GroupBox();
-            grpDdc.Text = "硬件调节 (DDC/CI) — 直接控制显示器面板, 含饱和度";
+            grpDdc.Text = "Ajuste de hardware (DDC/CI) — controla directamente el panel del monitor, incluye saturación";
             grpDdc.SetBounds(276, 336, 610, 152);
             Controls.Add(grpDdc);
 
-            lblDdcStatus = NewLabel("正在检测…", 14, 22);
+            lblDdcStatus = NewLabel("Detectando…", 14, 22);
             lblDdcStatus.AutoSize = false;
             lblDdcStatus.SetBounds(14, 22, 470, 18);
             grpDdc.Controls.Add(lblDdcStatus);
 
-            btnDdcRefresh = NewButton("重新读取", 495, 17, 100, 26, delegate { LoadDdcToUi(true); });
+            btnDdcRefresh = NewButton("Volver a leer", 495, 17, 100, 26, delegate { LoadDdcToUi(true); });
             grpDdc.Controls.Add(btnDdcRefresh);
 
             tbDdcBright = NewTrack(0, 100, 10, 70, 44, 420);
             lblDdcBrightVal = NewLabel("--", 500, 50);
-            AddRow(grpDdc, "亮度", 44, tbDdcBright, null);
+            AddRow(grpDdc, "Brillo", 44, tbDdcBright, null);
             grpDdc.Controls.Add(lblDdcBrightVal);
 
             tbDdcContrast = NewTrack(0, 100, 10, 70, 78, 420);
             lblDdcContrastVal = NewLabel("--", 500, 84);
-            AddRow(grpDdc, "对比度", 78, tbDdcContrast, null);
+            AddRow(grpDdc, "Contraste", 78, tbDdcContrast, null);
             grpDdc.Controls.Add(lblDdcContrastVal);
 
             tbDdcSat = NewTrack(0, 100, 10, 70, 112, 420);
             lblDdcSatVal = NewLabel("--", 500, 118);
-            AddRow(grpDdc, "饱和度", 112, tbDdcSat, null);
+            AddRow(grpDdc, "Saturación", 112, tbDdcSat, null);
             grpDdc.Controls.Add(lblDdcSatVal);
 
             WireDdcSlider(tbDdcBright, lblDdcBrightVal, VcpCodes.Brightness);
@@ -282,7 +291,7 @@ namespace GammaPanelX
 
             // ---------- 底部：配置文件 ----------
             grpProfiles = new GroupBox();
-            grpProfiles.Text = "配置文件 (可绑定全局热键一键切换)";
+            grpProfiles.Text = "Perfiles (se pueden vincular a teclas rápidas globales)";
             grpProfiles.SetBounds(12, 496, 874, 78);
             Controls.Add(grpProfiles);
 
@@ -292,33 +301,39 @@ namespace GammaPanelX
             cboProfiles.SelectedIndexChanged += delegate { ShowProfileHotkey(); };
             grpProfiles.Controls.Add(cboProfiles);
 
-            btnApplyProfile = NewButton("应用", 222, 29, 64, 27, delegate { ApplySelectedProfile(); });
-            btnSaveProfile = NewButton("保存当前", 292, 29, 84, 27, delegate { SaveToSelectedProfile(); });
-            btnSaveAsProfile = NewButton("另存为…", 382, 29, 84, 27, delegate { SaveProfileAs(); });
-            btnDeleteProfile = NewButton("删除", 472, 29, 64, 27, delegate { DeleteSelectedProfile(); });
+            btnApplyProfile = NewButton("Aplicar", 222, 29, 64, 27, delegate { ApplySelectedProfile(); });
+            btnSaveProfile = NewButton("Guardar actual", 292, 29, 84, 27, delegate { SaveToSelectedProfile(); });
+            btnSaveAsProfile = NewButton("Guardar como…", 382, 29, 84, 27, delegate { SaveProfileAs(); });
+            btnDeleteProfile = NewButton("Eliminar", 472, 29, 64, 27, delegate { DeleteSelectedProfile(); });
             grpProfiles.Controls.Add(btnApplyProfile);
             grpProfiles.Controls.Add(btnSaveProfile);
             grpProfiles.Controls.Add(btnSaveAsProfile);
             grpProfiles.Controls.Add(btnDeleteProfile);
 
-            Label lblHot = NewLabel("热键:", 566, 34);
+            Label lblHot = NewLabel("Tecla rápida:", 550, 34);
             grpProfiles.Controls.Add(lblHot);
 
             txtHotkey = new TextBox();
             txtHotkey.ReadOnly = true;
-            txtHotkey.SetBounds(606, 30, 170, 26);
-            txtHotkey.Text = "点击后按组合键";
+            txtHotkey.SetBounds(640, 30, 136, 26);
+            txtHotkey.Text = "Pulse la combinación de teclas";
             txtHotkey.KeyDown += HotkeyCapture;
             grpProfiles.Controls.Add(txtHotkey);
 
-            btnClearHotkey = NewButton("清除", 782, 29, 60, 27, delegate { ClearHotkey(); });
+            btnClearHotkey = NewButton("Borrar", 782, 29, 60, 27, delegate { ClearHotkey(); });
             grpProfiles.Controls.Add(btnClearHotkey);
 
             // ---------- 状态栏 ----------
             statusStrip = new StatusStrip();
-            lblStatus = new ToolStripStatusLabel("就绪");
+            lblStatus = new ToolStripStatusLabel("Listo");
             statusStrip.Items.Add(lblStatus);
             Controls.Add(statusStrip);
+
+            btnTheme = new Button();
+            btnTheme.Text = "Tema: Sistema";
+            btnTheme.SetBounds(70, 8, 116, 24);
+            btnTheme.Click += delegate { CycleTheme(); };
+            Controls.Add(btnTheme);
         }
 
         private Label NewLabel(string text, int x, int y)
@@ -424,12 +439,12 @@ namespace GammaPanelX
                 if (m == null) return;
                 valLabel.Text = tb.Value + "/" + tb.Maximum;
 
-                // 目标显示器在拖动时确定, 而不是 400ms 去抖到期时 — 期间切换选中项不会写错屏
+                // 目标Monitor在拖动时Aceptar, 而不是 400ms 去抖到期时 — 期间切换选中项不会写错屏
                 List<DisplayMonitor> newTargets = new List<DisplayMonitor>();
                 if (chkApplyAll.Checked) newTargets.AddRange(_monitors);
                 else newTargets.Add(m);
 
-                // 去抖窗口内目标变了 (切换了显示器): 先把旧批次按旧目标冲刷出去, 不能混入新目标
+                // 去抖窗口内目标变了 (切换了Monitor): 先把旧批次按旧目标冲刷出去, 不能混入新目标
                 bool flushOld;
                 lock (_pendingDdcWrites)
                 {
@@ -498,7 +513,7 @@ namespace GammaPanelX
         private void RebuildTrayMenu()
         {
             trayMenu.Items.Clear();
-            ToolStripMenuItem show = new ToolStripMenuItem("显示主窗口");
+            ToolStripMenuItem show = new ToolStripMenuItem("Mostrar ventana principal");
             show.Font = new Font(trayMenu.Font, FontStyle.Bold);
             show.Click += delegate { ShowMainWindow(); };
             trayMenu.Items.Add(show);
@@ -518,16 +533,16 @@ namespace GammaPanelX
                 trayMenu.Items.Add(new ToolStripSeparator());
             }
 
-            ToolStripMenuItem reset = new ToolStripMenuItem("重置所有显示器");
+            ToolStripMenuItem reset = new ToolStripMenuItem("Restablecer todos los monitores");
             reset.Click += delegate { ResetAllMonitors(); };
             trayMenu.Items.Add(reset);
             trayMenu.Items.Add(new ToolStripSeparator());
 
-            ToolStripMenuItem exitKeep = new ToolStripMenuItem("退出 (保留当前色彩)");
+            ToolStripMenuItem exitKeep = new ToolStripMenuItem("Salir (mantener colores actuales)");
             exitKeep.Click += delegate { ExitApp(false); };
             trayMenu.Items.Add(exitKeep);
 
-            ToolStripMenuItem exitRestore = new ToolStripMenuItem("退出并恢复默认色彩");
+            ToolStripMenuItem exitRestore = new ToolStripMenuItem("Salir y restaurar colores predeterminados");
             exitRestore.Click += delegate { ExitApp(true); };
             trayMenu.Items.Add(exitRestore);
         }
@@ -541,7 +556,7 @@ namespace GammaPanelX
         }
 
         // ====================================================================
-        //  显示器枚举与选择
+        //  Monitor枚举与选择
         // ====================================================================
 
         private void RefreshMonitors(bool reapply)
@@ -552,7 +567,7 @@ namespace GammaPanelX
 
             MonitorService.ReleaseAll(_monitors);
             _monitors = MonitorService.Enumerate();
-            ResolveBaselines();   // 必须在重新应用之前读取硬件 LUT
+            ResolveBaselines();   // 必须在重新Aplicar之前读取硬件 LUT
 
             _loadingUi = true;
             lstMonitors.Items.Clear();
@@ -574,7 +589,7 @@ namespace GammaPanelX
 
             LoadMonitorToUi();
 
-            // 后台探测所有显示器的 DDC/CI 支持情况
+            // 后台探测所有Monitor的 DDC/CI 支持情况
             List<DisplayMonitor> snapshot = new List<DisplayMonitor>(_monitors);
             ThreadPool.QueueUserWorkItem(delegate
             {
@@ -601,7 +616,7 @@ namespace GammaPanelX
                 catch (Exception) { }
             });
 
-            SetStatus(string.Format("检测到 {0} 台显示器", _monitors.Count));
+            SetStatus(string.Format("Detectados {0} monitor(es)", _monitors.Count));
         }
 
         private DisplayMonitor SelectedMonitor()
@@ -622,8 +637,8 @@ namespace GammaPanelX
 
         // ---------- 基线 LUT (保留系统 ICC 校准) ----------
 
-        /// <summary>为每台显示器确定基线 LUT：首次见到时捕获当前硬件曲线；
-        /// 若硬件曲线与"基线+已存配置"的预期不符 (说明外部已重新校准或注销重置), 则以当前硬件曲线为新基线。</summary>
+        /// <summary>为每台MonitorAceptar基线 LUT：首次见到时捕获当前硬件曲线；
+        /// 若硬件曲线与"línea base + config guardada"的预期不符 (说明外部已重新校准或注销重置), 则以当前硬件曲线为新基线。</summary>
         private void ResolveBaselines()
         {
             foreach (DisplayMonitor m in _monitors)
@@ -689,13 +704,13 @@ namespace GammaPanelX
             return max;
         }
 
-        /// <summary>统一的 Gamma 应用入口：在基线之上合成配置。</summary>
+        /// <summary>统一的 Gamma Aplicar入口：在基线之上合成配置。</summary>
         private bool ApplyConfig(DisplayMonitor m, MonitorConfig cfg)
         {
             return MonitorService.ApplyGamma(m.DeviceName, cfg, GetBaseline(m));
         }
 
-        /// <summary>把选中显示器的配置载入右侧面板。</summary>
+        /// <summary>把选中Monitor的配置载入右侧面板。</summary>
         private void LoadMonitorToUi()
         {
             if (_loadingUi) return;
@@ -710,8 +725,8 @@ namespace GammaPanelX
             LoadDdcToUi(false);
         }
 
-        /// <summary>让通道单选按钮如实反映配置：联动配置显示"RGB 联动",
-        /// 分通道配置切到单通道视图 — 否则滑块显示红通道值却按联动提交, 会悄悄毁掉绿/蓝通道。</summary>
+        /// <summary>让通道单选按钮如实反映配置：联动配置显示"RGB vinculado",
+        /// 分通道配置切到单通道视图 — 否则滑块显示Rojo通道值却按联动提交, 会悄悄毁掉Verde/Azul通道。</summary>
         private void SyncRadioToConfig(MonitorConfig cfg)
         {
             _loadingUi = true;
@@ -757,7 +772,7 @@ namespace GammaPanelX
         //  软件 Gamma 提交
         // ====================================================================
 
-        /// <summary>滑块变动 → 写入配置并立即应用。</summary>
+        /// <summary>滑块变动 → 写入配置并立即Aplicar。</summary>
         private void CommitSliderChange()
         {
             DisplayMonitor m = SelectedMonitor();
@@ -821,11 +836,11 @@ namespace GammaPanelX
         private void ShowRampRejected(bool rejected)
         {
             lblGammaStatus.Text = rejected
-                ? "部分数值被系统拒绝 (超出默认允许范围), 屏幕可能未变化 — 见下方解除限制链接"
+                ? "Algunos valores fueron rechazados por el sistema (fuera del rango permitido por defecto); la pantalla puede no cambiar — ver enlace inferior para quitar el límite"
                 : "";
         }
 
-        /// <summary>重新应用所有已连接且非默认值的显示器配置。返回应用台数。</summary>
+        /// <summary>重新Aplicar所有已连接且非默认值的Monitor配置。返回Aplicar台数。</summary>
         private int ReapplyNonNeutral()
         {
             int n = 0;
@@ -856,7 +871,7 @@ namespace GammaPanelX
             LoadChannelToSliders();
             picCurve.Invalidate();
             ScheduleSave();
-            SetStatus(m.ToString() + " 已重置");
+            SetStatus(m.ToString() + " restablecido");
         }
 
         private void ResetAllMonitors()
@@ -873,7 +888,7 @@ namespace GammaPanelX
             LoadChannelToSliders();
             picCurve.Invalidate();
             ScheduleSave();
-            SetStatus("所有显示器已重置为默认");
+            SetStatus("Todos los monitores restablecidos a valores predeterminados");
         }
 
         // ====================================================================
@@ -952,14 +967,14 @@ namespace GammaPanelX
             if (!sat) lblDdcSatVal.Text = "--";
         }
 
-        /// <summary>后台读取选中显示器的 DDC 数值并刷新硬件调节区。</summary>
+        /// <summary>后台读取选中Monitor的 DDC 数值并刷新硬件调节区。</summary>
         private void LoadDdcToUi(bool forceReprobe)
         {
             DisplayMonitor m = SelectedMonitor();
             if (m == null) return;
 
             SetDdcEnabled(false, false, false);
-            lblDdcStatus.Text = "正在读取显示器硬件参数…";
+            lblDdcStatus.Text = "Leyendo parámetros de hardware del monitor…";
 
             DisplayMonitor target = m;
             ThreadPool.QueueUserWorkItem(delegate
@@ -1006,11 +1021,11 @@ namespace GammaPanelX
 
                         SetDdcEnabled(bOk, cOk, sOk);
                         if (!bOk && !cOk && !sOk)
-                            lblDdcStatus.Text = "此显示器不支持 DDC/CI (或被显示器菜单关闭)";
+                            lblDdcStatus.Text = "Este monitor no admite DDC/CI (o está desactivado en el menú del monitor)";
                         else if (!sOk)
-                            lblDdcStatus.Text = "已连接 — 此显示器不提供饱和度(VCP 0x8A), 可调亮度/对比度";
+                            lblDdcStatus.Text = "Conectado — este monitor no ofrece saturación (VCP 0x8A); se puede ajustar brillo/contraste";
                         else
-                            lblDdcStatus.Text = "已连接 — 参数直接写入显示器硬件";
+                            lblDdcStatus.Text = "Conectado — los parámetros se escriben directamente en el hardware del monitor";
                     });
                 }
                 catch (Exception)
@@ -1019,7 +1034,7 @@ namespace GammaPanelX
                     {
                         BeginInvoke((MethodInvoker)delegate
                         {
-                            lblDdcStatus.Text = "DDC/CI 通信失败";
+                            lblDdcStatus.Text = "Error de comunicación DDC/CI";
                         });
                     }
                     catch (Exception) { }
@@ -1123,12 +1138,12 @@ namespace GammaPanelX
             if (p == null) { SaveProfileAs(); return; }
             p.Monitors = SnapshotCurrent();
             ScheduleSave();
-            SetStatus(string.Format("配置文件「{0}」已更新", p.Name));
+            SetStatus(string.Format("Perfil «{0}» actualizado", p.Name));
         }
 
         private void SaveProfileAs()
         {
-            string name = PromptText("另存为配置文件", "输入配置文件名称:");
+            string name = PromptText("Guardar perfil como", "Nombre del perfil:");
             if (string.IsNullOrEmpty(name)) return;
 
             Profile existing = null;
@@ -1149,14 +1164,14 @@ namespace GammaPanelX
             ScheduleSave();
             RefreshProfileCombo();
             cboProfiles.SelectedItem = name;
-            SetStatus(string.Format("配置文件「{0}」已保存", name));
+            SetStatus(string.Format("Perfil «{0}» guardado", name));
         }
 
         private void DeleteSelectedProfile()
         {
             Profile p = SelectedProfile();
             if (p == null) return;
-            if (MessageBox.Show(this, string.Format("确定删除配置文件「{0}」?", p.Name),
+            if (MessageBox.Show(this, string.Format("¿Eliminar el perfil «{0}»?", p.Name),
                     "GammaPanel X", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
             _settings.Profiles.Remove(p);
@@ -1197,11 +1212,11 @@ namespace GammaPanelX
             LoadChannelToSliders();
             picCurve.Invalidate();
             if (anyRejected)
-                SetStatus(string.Format("已应用「{0}」, 但部分数值被系统拒绝", p.Name));
+                SetStatus(string.Format("Aplicado «{0}», pero algunos valores fueron rechazados por el sistema", p.Name));
             else
-                SetStatus(string.Format("已应用配置文件「{0}」", p.Name));
+                SetStatus(string.Format("Aplicado el perfil «{0}»", p.Name));
             if (trayIcon != null && !Visible)
-                trayIcon.ShowBalloonTip(1200, "GammaPanel X", string.Format("已应用「{0}」", p.Name), ToolTipIcon.Info);
+                trayIcon.ShowBalloonTip(1200, "GammaPanel X", string.Format("Aplicado «{0}»", p.Name), ToolTipIcon.Info);
         }
 
         private string PromptText(string title, string caption)
@@ -1220,11 +1235,11 @@ namespace GammaPanelX
                 TextBox t = new TextBox();
                 t.SetBounds(12, 38, 296, 26);
                 Button ok = new Button();
-                ok.Text = "确定";
+                ok.Text = "Aceptar";
                 ok.DialogResult = DialogResult.OK;
                 ok.SetBounds(142, 78, 80, 28);
                 Button cancel = new Button();
-                cancel.Text = "取消";
+                cancel.Text = "Cancelar";
                 cancel.DialogResult = DialogResult.Cancel;
                 cancel.SetBounds(228, 78, 80, 28);
 
@@ -1249,7 +1264,7 @@ namespace GammaPanelX
         {
             Profile p = SelectedProfile();
             if (p == null || p.HotKey == 0)
-                txtHotkey.Text = "点击后按组合键";
+                txtHotkey.Text = "Pulse la combinación de teclas";
             else
                 txtHotkey.Text = FormatHotkey(p.HotKey);
         }
@@ -1267,7 +1282,7 @@ namespace GammaPanelX
             Profile p = SelectedProfile();
             if (p == null)
             {
-                SetStatus("请先创建并选中一个配置文件, 再设置热键");
+                SetStatus("Cree y seleccione primero un perfil, luego asigne la tecla rápida");
                 return;
             }
             if (key == Keys.Escape || key == Keys.Back || key == Keys.Delete)
@@ -1281,7 +1296,7 @@ namespace GammaPanelX
             bool isFKey = key >= Keys.F1 && key <= Keys.F24;
             if (!hasMod && !isFKey)
             {
-                SetStatus("请使用 Ctrl/Alt 组合键 (如 Ctrl+Alt+1) 或 F 功能键作为热键");
+                SetStatus("Use una combinación Ctrl/Alt (p. ej. Ctrl+Alt+1) o una tecla de función F como tecla rápida");
                 return;
             }
 
@@ -1289,7 +1304,7 @@ namespace GammaPanelX
             {
                 if (other != p && other.HotKey == (int)e.KeyData)
                 {
-                    SetStatus(string.Format("该热键已被配置文件「{0}」占用", other.Name));
+                    SetStatus(string.Format("Esta tecla rápida ya está en uso por el perfil «{0}»", other.Name));
                     return;
                 }
             }
@@ -1344,7 +1359,7 @@ namespace GammaPanelX
                 if (NativeMethods.RegisterHotKey(Handle, id, mods, vk))
                     _hotkeyOrder.Add(p);
                 else
-                    SetStatus(string.Format("热键 {0} 注册失败 (可能已被其他程序占用)", FormatHotkey(p.HotKey)));
+                    SetStatus(string.Format("Error al registrar la tecla rápida {0} (puede estar en uso por otro programa)", FormatHotkey(p.HotKey)));
             }
         }
 
@@ -1377,7 +1392,7 @@ namespace GammaPanelX
             if (e.Mode == PowerModes.Resume)
             {
                 _displayChangeTimer.Stop();
-                _displayChangeTimer.Start();   // 唤醒后驱动常重置 LUT, 延迟刷新+重应用
+                _displayChangeTimer.Start();   // 唤醒后驱动常重置 LUT, 延迟刷新+重Aplicar
             }
         }
 
@@ -1385,6 +1400,162 @@ namespace GammaPanelX
         {
             if (e.Reason == SessionSwitchReason.SessionUnlock)
                 ReapplyNonNeutral();
+        }
+
+        private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+        {
+            if (e.Category == UserPreferenceCategory.General || e.Category == UserPreferenceCategory.Color)
+            {
+                if (_currentTheme == AppTheme.System)
+                    ApplyTheme();
+            }
+        }
+
+        private void CycleTheme()
+        {
+            // Sistema -> Oscuro -> Claro -> Sistema...
+            if (_currentTheme == AppTheme.System) _currentTheme = AppTheme.Dark;
+            else if (_currentTheme == AppTheme.Dark) _currentTheme = AppTheme.Light;
+            else _currentTheme = AppTheme.System;
+
+            SaveThemeSetting();
+            ApplyTheme();
+        }
+
+        private void SaveThemeSetting()
+        {
+            try
+            {
+                using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(RegThemeKey))
+                {
+                    if (k != null) k.SetValue("Theme", (int)_currentTheme, Microsoft.Win32.RegistryValueKind.DWord);
+                }
+            }
+            catch (Exception) { }
+        }
+
+        private void LoadThemeSetting()
+        {
+            try
+            {
+                using (Microsoft.Win32.RegistryKey k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(RegThemeKey))
+                {
+                    if (k != null)
+                    {
+                        object v = k.GetValue("Theme");
+                        if (v != null)
+                        {
+                            int i = Convert.ToInt32(v);
+                            if (i >= 0 && i <= 2) _currentTheme = (AppTheme)i;
+                        }
+                    }
+                }
+            }
+            catch (Exception) { }
+        }
+
+        private bool IsDarkNow()
+        {
+            if (_currentTheme == AppTheme.Dark) return true;
+            if (_currentTheme == AppTheme.Light) return false;
+            return IsSystemDarkMode();
+        }
+
+        private void ApplyTheme()
+        {
+            ApplyTitleBarTheme();
+            ApplyBodyTheme();
+            if (btnTheme != null)
+            {
+                string label = _currentTheme == AppTheme.System ? "Tema: Sistema"
+                    : (_currentTheme == AppTheme.Dark ? "Tema: Oscuro" : "Tema: Claro");
+                btnTheme.Text = label;
+            }
+        }
+
+        private static bool IsSystemDarkMode()
+        {
+            try
+            {
+                using (Microsoft.Win32.RegistryKey key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                    @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                {
+                    if (key != null)
+                    {
+                        object val = key.GetValue("AppsUseLightTheme");
+                        if (val != null)
+                        {
+                            try { return Convert.ToInt32(val) == 0; }
+                            catch (Exception) { }
+                        }
+                    }
+                }
+            }
+            catch (Exception) { }
+            return false;
+        }
+
+        private void ApplyTitleBarTheme()
+        {
+            try
+            {
+                if (!IsHandleCreated) return;
+                int dark = IsDarkNow() ? 1 : 0;
+                int attr = NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE;
+                int hr = NativeMethods.DwmSetWindowAttribute(Handle, attr, ref dark, sizeof(int));
+                if (hr != 0)
+                {
+                    int attr2 = NativeMethods.DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1;
+                    NativeMethods.DwmSetWindowAttribute(Handle, attr2, ref dark, sizeof(int));
+                }
+            }
+            catch (Exception) { }
+        }
+
+        private void ApplyBodyTheme()
+        {
+            try
+            {
+                bool dark = IsDarkNow();
+                Color formBack = dark ? Color.FromArgb(32, 32, 32) : SystemColors.Control;
+                Color groupBack = dark ? Color.FromArgb(40, 40, 42) : SystemColors.Control;
+                Color textFore = dark ? Color.FromArgb(232, 232, 232) : SystemColors.ControlText;
+                Color statusBack = dark ? Color.FromArgb(32, 32, 32) : SystemColors.Control;
+
+                BackColor = formBack;
+                ApplyBodyThemeRecursive(Controls, dark, formBack, groupBack, textFore);
+
+                if (statusStrip != null)
+                {
+                    statusStrip.BackColor = statusBack;
+                    foreach (ToolStripItem item in statusStrip.Items)
+                        item.ForeColor = textFore;
+                }
+            }
+            catch (Exception) { }
+        }
+
+        private void ApplyBodyThemeRecursive(Control.ControlCollection controls, bool dark, Color formBack, Color groupBack, Color textFore)
+        {
+            foreach (Control c in controls)
+            {
+                if (c is GroupBox)
+                {
+                    c.BackColor = groupBack;
+                    c.ForeColor = textFore;
+                }
+                else if (c is Label)
+                {
+                    c.ForeColor = textFore;
+                }
+                else if (c is LinkLabel)
+                {
+                    c.ForeColor = textFore;
+                }
+
+                if (c.HasChildren)
+                    ApplyBodyThemeRecursive(c.Controls, dark, formBack, groupBack, textFore);
+            }
         }
 
         private bool ReadAutoStart()
@@ -1413,7 +1584,7 @@ namespace GammaPanelX
             }
             catch (Exception)
             {
-                SetStatus("写入开机启动项失败");
+                SetStatus("Error al escribir el arranque automático");
             }
         }
 
@@ -1426,7 +1597,7 @@ namespace GammaPanelX
                     "GdiIcmGammaRange", null);
                 if (val is int && (int)val == 256)
                 {
-                    MessageBox.Show(this, "限制已经解除。如果还未生效, 请注销或重启一次。",
+                    MessageBox.Show(this, "Límite eliminado. Si aún no surte efecto, cierre sesión o reinicie.",
                         "GammaPanel X", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
@@ -1444,15 +1615,15 @@ namespace GammaPanelX
                     "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ICM",
                     "GdiIcmGammaRange", null);
                 if (after is int && (int)after == 256)
-                    MessageBox.Show(this, "已写入注册表。注销或重启后, 系统将允许更大的 Gamma 调节范围。",
+                    MessageBox.Show(this, "Escrito en el registro. Cierre sesión o reinicie para que el sistema permita un mayor rango de ajuste de gamma.",
                         "GammaPanel X", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 else
-                    MessageBox.Show(this, "注册表写入未生效, 请确认在弹出的 UAC 窗口中点击了\"是\"。",
+                    MessageBox.Show(this, "La escritura en el registro no tuvo efecto; confirme que hizo clic en \"Sí\" en la ventana UAC.",
                         "GammaPanel X", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception)
             {
-                // 用户取消了 UAC 提示
+                // 用户Cancelar了 UAC 提示
             }
         }
 
@@ -1466,7 +1637,7 @@ namespace GammaPanelX
             {
                 e.Cancel = true;
                 Hide();
-                trayIcon.ShowBalloonTip(1500, "GammaPanel X", "仍在后台运行, 双击托盘图标可重新打开", ToolTipIcon.Info);
+                trayIcon.ShowBalloonTip(1500, "GammaPanel X", "Sigue ejecutándose en segundo plano; doble clic en el icono de la bandeja para reabrir", ToolTipIcon.Info);
                 return;
             }
 
@@ -1483,6 +1654,7 @@ namespace GammaPanelX
             MonitorService.ReleaseAll(_monitors);
             SystemEvents.PowerModeChanged -= OnPowerModeChanged;
             SystemEvents.SessionSwitch -= OnSessionSwitch;
+            SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
             trayIcon.Visible = false;
             trayIcon.Dispose();
             base.OnFormClosing(e);

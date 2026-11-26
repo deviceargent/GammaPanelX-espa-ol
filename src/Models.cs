@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Web.Script.Serialization;
@@ -34,7 +34,7 @@ namespace GammaPanelX
         }
     }
 
-    /// <summary>一台显示器的完整调节状态。</summary>
+    /// <summary>一台Monitor的完整调节状态。</summary>
     public class MonitorConfig
     {
         public ChannelSettings Red { get; set; }
@@ -73,7 +73,7 @@ namespace GammaPanelX
         }
     }
 
-    /// <summary>命名配置文件：记录所有显示器的状态，可绑定全局热键。</summary>
+    /// <summary>命名配置文件：记录所有Monitor的状态，可绑定全局热键。</summary>
     public class Profile
     {
         public string Name { get; set; }
@@ -92,9 +92,9 @@ namespace GammaPanelX
     {
         public Dictionary<string, MonitorConfig> Current { get; set; }
         public List<Profile> Profiles { get; set; }
-        /// <summary>每台显示器首次见到时捕获的基线 LUT (768 项), 通常是系统 ICC 校准曲线。</summary>
+        /// <summary>每台Monitor首次见到时捕获的基线 LUT (768 项), 通常是系统 ICC 校准曲线。</summary>
         public Dictionary<string, List<int>> Baselines { get; set; }
-        public bool KeepApplied { get; set; }      // 定时重新应用（防止游戏/驱动重置）
+        public bool KeepApplied { get; set; }      // 定时重新Aplicar（防止游戏/驱动重置）
         public bool TrayOnClose { get; set; }      // 点关闭按钮时最小化到托盘
         public bool ApplyOnStartup { get; set; }   // 启动时自动恢复上次的设置
         public string LastProfile { get; set; }

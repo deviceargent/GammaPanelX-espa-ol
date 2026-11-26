@@ -1,11 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
 namespace GammaPanelX
 {
-    /// <summary>在每台显示器中央闪现编号，方便用户对应列表项和实体屏幕。</summary>
+    /// <summary>在每台Monitor中央闪现编号，方便用户对应列表项和实体屏幕。</summary>
     public class IdentifyForm : Form
     {
         public IdentifyForm(string text, Rectangle monitorBounds)
