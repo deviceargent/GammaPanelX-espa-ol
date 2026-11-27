@@ -302,8 +302,8 @@ namespace GammaPanelX
             grpProfiles.Controls.Add(cboProfiles);
 
             btnApplyProfile = NewButton("Aplicar", 222, 29, 64, 27, delegate { ApplySelectedProfile(); });
-            btnSaveProfile = NewButton("Guardar actual", 292, 29, 84, 27, delegate { SaveToSelectedProfile(); });
-            btnSaveAsProfile = NewButton("Guardar como…", 382, 29, 84, 27, delegate { SaveProfileAs(); });
+            btnSaveProfile = NewButton("Guardar", 292, 29, 84, 27, delegate { SaveToSelectedProfile(); });
+            btnSaveAsProfile = NewButton("G. Como", 382, 29, 84, 27, delegate { SaveProfileAs(); });
             btnDeleteProfile = NewButton("Eliminar", 472, 29, 64, 27, delegate { DeleteSelectedProfile(); });
             grpProfiles.Controls.Add(btnApplyProfile);
             grpProfiles.Controls.Add(btnSaveProfile);
